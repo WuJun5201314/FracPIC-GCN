@@ -1,0 +1,23 @@
+name: fracpic-gcn
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.10.20
+  - numpy=1.26.4
+  - scipy=1.13.1
+  - scikit-learn=1.5.2
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu124
+      - torch==2.5.1+cu124
+      - torchvision==0.20.1+cu124
+      - torchaudio==2.5.1+cu124
+      - torch-geometric==2.6.1
+      - deeprobust==0.2.11
+      - loguru==0.7.3
+      - networkx==3.4.2
+      - numba==0.67.0
+      - llvmlite==0.49.0
+      - gensim==4.4.0
+      - scikit-image==0.25.2
