@@ -1,0 +1,14 @@
+# Downloaded datasets, graph caches, and experiment output
+/data/
+/logs/
+/fracpic_gcn_results/
+*.log
+*.out
+
+# Python and local editor files
+__pycache__/
+*.py[cod]
+/.venv/
+/.idea/
+/.vscode/
+.DS_Store
