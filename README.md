@@ -1,123 +1,243 @@
 # FracPIC-GCN
 
-FracPIC-GCN (Fractional Projection Influence Contradiction Graph Convolutional
-Network) is a method for semi-supervised node classification with noisy labels.
-Its fractional graph projection layer (FGPL) applies a fractional weight
-gradient to the first feature projection of the main GCN classifier. The
-forward pass uses standard GCN propagation.
+**FracPIC-GCN: Fractional Projection Influence Contradiction Graph Convolutional Network**
 
-This package covers six datasets under uniform and pair label noise, for 12
-experimental settings. It includes entry points for FracPIC-GCN and the ICGNN
-baseline. OGBN-Arxiv and Cornell are outside the scope of this package.
+This repository provides a PyTorch implementation of FracPIC-GCN for **robust semi-supervised node classification under scarce and noisy labels**.
 
-| Source file | Paper component |
-| --- | --- |
-| `models/FracPIC_GCN.py` | `FracPICGCN` (Section 4) and the `EstimateAdj` auxiliary graph estimator (Section 4.2) |
-| `models/FGPL.py` | `FGPL`, the fractional graph projection layer (Section 4.3) |
-| `models/GCN.py` | Two-layer GCN classifier, with FGPL in the first projection when enabled |
+**Paper:** *FracPIC-GCN: Fractional Projection Influence Contradiction Graph Convolutional Network* (public paper link to be added).
 
-## Installation
+## 1. Overview
 
-The environment file targets Linux x86-64 with an NVIDIA GPU and a driver
-compatible with the PyTorch CUDA 12.4 build. Its core versions come from the
-project's Conda package list.
+In semi-supervised node classification on graphs, incorrect training labels can interfere with model parameter updates and cause shifts in hidden node representations. Such shifts may change the relationships among nodes in the representation space and, in turn, affect label-noise detection and correction based on those relationships. Consequently, identifying and correcting mislabeled nodes only at the supervision stage may not fully eliminate the influence of label noise on representation learning.
 
-| Component | Version |
-| --- | --- |
-| Python | 3.10.20 |
-| PyTorch | 2.5.1 (CUDA 12.4) |
-| PyTorch Geometric | 2.6.1 |
-| NumPy / SciPy / scikit-learn | 1.26.4 / 1.13.1 / 1.5.2 |
-| DeepRobust / NetworkX / Loguru | 0.2.11 / 3.4.2 / 0.7.3 |
+To address this issue, we first establish a **local perturbation-propagation analysis for fractional feature projection**. Under explicitly stated assumptions, we analyze the relationship between fractional-order weight gradients and standard first-order gradients, derive norm bounds for the fractional correction and projection-weight gradients, and investigate gradient perturbations induced by label flips and the resulting changes in node representations after one parameter update under a fixed training state and identical Adam histories.
 
-From the repository root, create the environment and check that the training
-entry point can load its dependencies.
+Building on this analysis, we propose **FracPIC-GCN (Fractional Projection Influence Contradiction Graph Convolutional Network)**. Its core component, the **Fractional Graph Projection Layer (FGPL)**, introduces fractional-order parameter differentiation only into the **backward gradients of the first-layer feature-projection weights** in the main GCN classifier. Frobenius-norm clipping is used to control the magnitude of the fractional correction. FGPL preserves standard GCN forward feature projection and neighborhood aggregation without replacing the Adam optimizer. When the fractional order is set to 1, the standard first-order feature-projection pathway is recovered.
+
+The model further combines auxiliary graph-structure estimation, structural and attribute-based dual-view influence contradiction, Gaussian mixture model (GMM)-based label-confidence estimation, soft-label refinement, and pseudo-label learning, allowing representation learning and noisy-supervision handling to operate within a unified training framework.
+
+## 2. Installation
+
+### Hardware and Software Environment
+
+The experiments were conducted using an **NVIDIA GeForce RTX 4090D GPU**. The provided code is primarily intended for Linux x86-64 systems equipped with an NVIDIA GPU. The CUDA runtime and driver should be compatible with the installed PyTorch build.
+
+| Component         | Version / Configuration    |
+| ----------------- | -------------------------- |
+| GPU               | NVIDIA GeForce RTX 4090D   |
+| Operating system  | Linux x86-64 (recommended) |
+| Python            | 3.10.20                    |
+| PyTorch           | 2.5.1 (CUDA 12.4 build)    |
+| PyTorch Geometric | 2.6.1                      |
+| NumPy             | 1.26.4                     |
+| SciPy             | 1.13.1                     |
+| scikit-learn      | 1.5.2                      |
+
+For the complete dependency list and version specifications, see [`environment.yml`](environment.yml) in the repository root.
+
+### Clone the Repository and Install Dependencies
 
 ```bash
+git clone https://github.com/WuJun5201314/FracPIC-GCN.git
+cd FracPIC-GCN
+
 conda env create -f environment.yml
 conda activate fracpic-gcn
+
 python -m pip check
 python train.py --help
 ```
 
-The first training run downloads the selected dataset into `data/` if needed.
-It also computes and caches a Personalized PageRank (PPR) matrix when the
-corresponding cache file is absent. First-time downloads require network access.
+Run these commands from the repository root.
 
-## Run FracPIC-GCN
+## 3. Datasets
 
-Run the preflight check, then start the full experiment suite from the repository
-root. The examples select GPU index `0`. Use `--gpu 1` to select the second GPU.
+The main experiments cover six graph node-classification datasets under two types of label noise: **Uniform** and **Pair**. The training-label noise rate is **20%**, and label corruption is applied only to training labels.
+
+| Dataset      | `--dataset` | Training-label Ratio |
+| ------------ | ----------- | -------------------: |
+| Coauthor CS  | `cs`        |                   1% |
+| Amazon Photo | `photo`     |                   1% |
+| Cora         | `cora`      |                   5% |
+| Pubmed       | `pubmed`    |                   1% |
+| DBLP         | `dblp`      |                   1% |
+| Citeseer     | `citeseer`  |                   5% |
+
+### Option 1: Automatic Dataset Download
+
+If a required dataset is not available locally, the dataset loader attempts to download it during training:
+
+* **Cora and Citeseer:** `.npz` files from the [gnn-meta-attack data directory](https://github.com/danielzuegner/gnn-meta-attack/tree/master/data).
+* **Pubmed:** `ind.pubmed.*` files from the [original GCN repository](https://github.com/tkipf/gcn/tree/master/gcn/data).
+* **Coauthor CS, Amazon Photo, and DBLP:** downloaded through the [PyTorch Geometric dataset loaders](https://pytorch-geometric.readthedocs.io/en/latest/modules/datasets.html).
+
+By default, the datasets are stored in the `data/` directory under the repository root. This option requires access to the original data sources on the first run. If the corresponding Personalized PageRank (PPR) cache is absent, the program also attempts to compute and save it. Because some datasets involve dense-matrix operations, generating PPR caches may require substantial memory and computation.
+
+### Option 2: Download from Baidu Netdisk
+
+For convenience, the complete shared `data` folder, including the six main datasets and precomputed PPR caches, is also available via Baidu Netdisk:
+
+**[Download the FracPIC-GCN datasets from Baidu Netdisk](https://pan.baidu.com/s/1CUVdQknzSQzWfnY-O0ntJA?pwd=japr)**
+
+**Extraction code:** `japr`
+
+After downloading, place the **entire `data` folder** directly in the repository root, as shown below:
+
+```text
+FracPIC-GCN/
+├── data/
+│   ├── cora.npz
+│   ├── citeseer.npz
+│   ├── ind.pubmed.*
+│   ├── cs/CS/
+│   ├── photo/Photo/
+│   ├── dblp/
+│   └── *_ppr.pt              # Optional PPR caches
+├── models/
+├── dataset.py
+├── train.py
+└── run_fracpic_gcn.py
+```
+
+Avoid creating an extra nested directory such as `FracPIC-GCN/data/data/`.
+
+## 4. Running Experiments
+
+Run all commands below from the **`FracPIC-GCN/` repository root**.
+
+### 4.1 Pre-run Check
 
 ```bash
 python run_fracpic_gcn.py --gpu 0 --dry-run
-
-python run_fracpic_gcn.py --gpu 0 --max-retries 1
 ```
 
-The dry run checks CUDA availability, logs the detected environment, and prints
-the 12 settings. It can report absent PPR caches before the first run. The full
-command invokes `train.py` once for each of the 12 main settings in Table 2,
-using five seeds (11 through 15) per setting.
+This command checks the CUDA environment and displays the 12 predefined experiment configurations without launching full training.
 
-| Dataset | `--dataset` | Labeled fraction | Uniform `alpha / c` | Pair `alpha / c` |
-| --- | --- | ---: | ---: | ---: |
-| Coauthor CS | `cs` | 1% | 0.17 / 1.262 | 0.34 / 1.0 |
-| Amazon Photo | `photo` | 1% | 0.30 / 2.50 | 0.406 / 1.188 |
-| Cora | `cora` | 5% | 0.72 / 0.75 | 0.702 / 1.284 |
-| Pubmed | `pubmed` | 1% | 0.808 / 1.0 | 0.72 / 0.50 |
-| DBLP | `dblp` | 1% | 0.60 / 0.952 | 0.721 / 1.0 |
-| Citeseer | `citeseer` | 5% | 0.20 / 0.30 | 0.17 / 0.751 |
+### 4.2 Run a Single Experiment
 
-All settings use a label noise rate of 20%. The runner records the remaining
-training arguments for each setting.
-
-### Single-run example
-
-This command runs Cora with uniform noise using one seed.
+The following example runs **Cora with Uniform label noise (20%)** on GPU 0, starting from random seed 11, for **one training and evaluation run**:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python train.py \
-  --dataset cora --noise uniform --ptb_rate 0.2 --label_rate 0.05 \
-  --K 50 --local_conflict_weight 0.9 --warmup_epochs 30 --scale1 1.0 \
-  --temp 0.01 --alpha 0.72 --c 0.75 --runs 1
+  --dataset cora \
+  --noise uniform \
+  --ptb_rate 0.2 \
+  --label_rate 0.05 \
+  --K 50 \
+  --local_conflict_weight 0.9 \
+  --warmup_epochs 30 \
+  --scale1 1.0 \
+  --temp 0.01 \
+  --alpha 0.72 \
+  --c 0.75 \
+  --seed 11 \
+  --runs 1
 ```
 
-### Results and resuming
+These parameters correspond to the Cora/Uniform configuration in `run_fracpic_gcn.py`, except that this example performs only one run. For other datasets or noise settings, refer to the `EXPERIMENTS` configurations in that script.
 
-The runner writes to `fracpic_gcn_results/` by default. It records the environment
-and run progress in `runner.log` and saves one training log per attempt.
-The training console and logs identify the method and report test accuracy
-for each seed, followed by its mean and standard deviation across seeds.
-The training entry point also writes logs under `logs/fracpic_gcn/<dataset>/`.
-Accuracies are reported as fractions in the logs and CSV.
+### 4.3 Main Training Arguments
 
-| File | Contents |
-| --- | --- |
-| `state.json` | Checkpoint tracking completed experiment invocations |
-| `results.csv` | One row per completed setting with the method name, mean, standard deviation, and five per-seed test accuracies |
-| `results.txt` | Text summary of experiment results and progress |
+| Argument           | Description                                                          |
+| ------------------ | -------------------------------------------------------------------- |
+| `--dataset`        | Dataset name                                                         |
+| `--noise`          | `uniform` or `pair`                                                  |
+| `--ptb_rate`       | Training-label noise probability                                     |
+| `--label_rate`     | Training-label ratio                                                 |
+| `--alpha`          | Fractional order, `0 < alpha <= 1`; `1.0` disables FGPL              |
+| `--c`              | Frobenius-norm clipping threshold for the FGPL fractional correction |
+| `--seed`, `--runs` | Initial training seed and number of consecutive-seed runs            |
+| `--K`              | Top-K for retrieving candidate node relationships                    |
+| `--warmup_epochs`  | Number of warm-up epochs for label-confidence estimation             |
+| `--temp`           | Sharpening temperature for neighborhood predictions                  |
 
-To resume, run the full command again with the same output directory. The
-runner skips completed invocations and restarts an interrupted invocation.
-For a separate run, specify a new directory with `--output-dir`.
-Use a fresh output directory with this version if you have a v2 checkpoint.
+For the complete argument list, run `python train.py --help`.
 
-## Run the ICGNN baseline
+### 4.4 Run All 12 Main Experiments
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 bash run.sh
+python run_fracpic_gcn.py --gpu 0 --max-retries 1
 ```
 
-This runs the same 12 dataset and noise settings once, with five seeds per
-setting. It uses `--alpha 1.0` to select the first-order GCN projection.
-The console identifies this mode as `ICGNN baseline`, and its training logs
-are written under `logs/icgnn_baseline/<dataset>/`.
+The experiment runner automatically executes **six datasets × two noise types**, with **five random seeds (11–15)** per configuration, and summarizes test accuracies. `--gpu 0` selects the first physical GPU; change the index to use a different GPU.
 
-## Acknowledgments
+### 4.5 Experiment Outputs and Resuming
 
-This implementation builds on [ICGNN](https://github.com/wayc04/ICGNN) by
-Wei Ju, Wei Zhang, Siyu Yi, Zhengyang Mao, Yifan Wang, Jingyuan Yuan,
-Zhiping Xiao, Ziyue Qiao, and Ming Zhang, *Identifying and Correcting Label
-Noise for Robust GNNs via Influence Contradiction* (ICML 2026).
-The upstream implementation also acknowledges NRGNN as a reference.
+By default, the automated experiment runner writes its outputs to `fracpic_gcn_results/`:
+
+| File          | Contents                                                                                 |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| `results.csv` | Mean test accuracy, standard deviation, and results for five random seeds per experiment |
+| `results.txt` | Text summary of the results                                                              |
+| `runner.log`  | Environment and experiment execution logs                                                |
+| `state.json`  | Completed-experiment state used for resuming interrupted runs                            |
+
+Detailed training logs are also written to `logs/fracpic_gcn/<dataset>/`. Accuracies in the logs and CSV files are represented as fractions; for example, `0.881` corresponds to `88.1%`.
+
+If the full experiment suite is interrupted, rerun the same command with the same output directory to skip completed configurations. To start a new, independent experiment suite, specify a different output directory:
+
+```bash
+python run_fracpic_gcn.py --gpu 0 --max-retries 1 \
+  --output-dir fracpic_gcn_results_new
+```
+
+## 5. Results
+
+The following table reports the **12 main FracPIC-GCN results from Table 2 of the manuscript**. The evaluation metric is **test node-classification accuracy (%, mean ± standard deviation over five runs)**. All settings use a 20% training-label noise rate.
+
+| Dataset      | Noise Type | FracPIC-GCN Test Accuracy (%) |
+| ------------ | ---------- | ----------------------------: |
+| Coauthor CS  | Uniform    |                    88.1 ± 0.5 |
+| Coauthor CS  | Pair       |                    86.9 ± 1.1 |
+| Amazon Photo | Uniform    |                    88.3 ± 0.7 |
+| Amazon Photo | Pair       |                    87.0 ± 0.6 |
+| Cora         | Uniform    |                    80.4 ± 1.9 |
+| Cora         | Pair       |                    79.7 ± 0.8 |
+| Pubmed       | Uniform    |                    80.6 ± 0.5 |
+| Pubmed       | Pair       |                    79.8 ± 0.5 |
+| DBLP         | Uniform    |                    78.9 ± 1.4 |
+| DBLP         | Pair       |                    80.3 ± 0.4 |
+| Citeseer     | Uniform    |                    72.2 ± 0.4 |
+| Citeseer     | Pair       |                    72.4 ± 1.1 |
+
+These results are taken from Table 2 of the manuscript and are reported as the mean and standard deviation of test accuracy over five independent runs. This repository provides the corresponding experimental code and predefined configurations. Reproduced results may vary due to differences in hardware, software versions, and randomness.
+
+## 6. Repository Structure
+
+```text
+FracPIC-GCN/
+├── models/
+│   ├── FGPL.py                 # Fractional graph projection layer
+│   ├── GCN.py                  # Two-layer GCN classifier
+│   └── FracPIC_GCN.py          # Main model and auxiliary graph-structure estimator
+├── dataset.py                  # Dataset loading and preprocessing
+├── train.py                    # Training, validation, and testing
+├── run_fracpic_gcn.py          # Experiment runner for the 12 main settings
+├── run.sh                      # Additional script included in the project
+├── utils.py                    # Utility functions
+├── environment.yml             # Conda environment configuration
+├── .gitignore
+└── README.md
+```
+
+The following directories may be used or generated during execution:
+
+```text
+data/                   # Datasets and PPR caches
+logs/                   # Training logs
+fracpic_gcn_results/    # Main experiment results
+```
+
+These data and output directories are not included in the current source-code package. They should be downloaded separately or generated during execution.
+
+## 7. Citation
+
+If you find FracPIC-GCN useful for your research, please cite our paper:
+
+**FracPIC-GCN: Fractional Projection Influence Contradiction Graph Convolutional Network**
+
+The public paper link and official BibTeX citation will be added once the publication information becomes available.
+
+## 8. Acknowledgments
+
+We thank the authors of [ICGNN](https://github.com/wayc04/ICGNN) for making their research code publicly available, which provided an important reference for this implementation. FracPIC-GCN extends this work by introducing fractional feature projection.
