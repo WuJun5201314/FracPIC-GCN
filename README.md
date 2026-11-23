@@ -2,9 +2,7 @@
 
 **FracPIC-GCN: Fractional Projection Influence Contradiction Graph Convolutional Network**
 
-This repository provides a PyTorch implementation of FracPIC-GCN for **robust semi-supervised node classification under scarce and noisy labels**.
-
-**Paper:** *FracPIC-GCN: Fractional Projection Influence Contradiction Graph Convolutional Network* (public paper link to be added).
+This repository provides a PyTorch implementation of FracPIC-GCN for robust semi-supervised node classification under scarce and noisy labels.
 
 ## 1. Overview
 
@@ -230,14 +228,7 @@ fracpic_gcn_results/    # Main experiment results
 
 These data and output directories are not included in the current source-code package. They should be downloaded separately or generated during execution.
 
-## 7. Citation
 
-If you find FracPIC-GCN useful for your research, please cite our paper:
-
-**FracPIC-GCN: Fractional Projection Influence Contradiction Graph Convolutional Network**
-
-The public paper link and official BibTeX citation will be added once the publication information becomes available.
-
-## 8. Acknowledgments
+## 7. Acknowledgments
 
 We thank the authors of [ICGNN](https://github.com/wayc04/ICGNN) for making their research code publicly available, which provided an important reference for this implementation. FracPIC-GCN extends this work by introducing fractional feature projection.
